@@ -1,7 +1,7 @@
 # DCT
 Source code for the paper "Incomplete Cross-Modal Retrieval with Deep Correlation Transfer"
 
-Requirements
+# Requirements
 python == 3.7.0
 pytorch == 1.12.1
 numpy == 1.21.6
