@@ -32,15 +32,6 @@ class GCN(nn.Module):
             # output projection
             self.gcn_layers.append(GraphConv(num_hidden, out_dim, residual=last_residual, activation=last_activation, norm=last_norm))
 
-        # if norm is not None:
-        #     self.norms = nn.ModuleList([
-        #         norm(num_hidden)
-        #         for _ in range(num_layers - 1)
-        #     ])
-        #     if not encoding:
-        #         self.norms.append(norm(out_dim))
-        # else:
-        #     self.norms = None
         self.norms = None
         self.head = nn.Identity()
 
@@ -84,13 +75,6 @@ class GraphConv(nn.Module):
                 self.res_fc = nn.Identity()
         else:
             self.register_buffer('res_fc', None)
-
-        # if norm == "batchnorm":
-        #     self.norm = nn.BatchNorm1d(out_dim)
-        # elif norm == "layernorm":
-        #     self.norm = nn.LayerNorm(out_dim)
-        # else:
-        #     self.norm = None
         
         self.norm = norm
         if norm is not None:
@@ -105,12 +89,7 @@ class GraphConv(nn.Module):
     def forward(self, graph, feat):
         with graph.local_scope():
             aggregate_fn = fn.copy_src('h', 'm')
-            # if edge_weight is not None:
-            #     assert edge_weight.shape[0] == graph.number_of_edges()
-            #     graph.edata['_edge_weight'] = edge_weight
-            #     aggregate_fn = fn.u_mul_e('h', '_edge_weight', 'm')
 
-            # (BarclayII) For RGCN on heterogeneous graphs we need to support GCN on bipartite.
             feat_src, feat_dst = expand_as_pair(feat, graph)
             # if self._norm in ['left', 'both']:
             degs = graph.out_degrees().float().clamp(min=1)
@@ -119,15 +98,6 @@ class GraphConv(nn.Module):
             norm = torch.reshape(norm, shp)
             feat_src = feat_src * norm
 
-            # if self._in_feats > self._out_feats:
-            #     # mult W first to reduce the feature size for aggregation.
-            #     # if weight is not None:
-            #         # feat_src = th.matmul(feat_src, weight)
-            #     graph.srcdata['h'] = feat_src
-            #     graph.update_all(aggregate_fn, fn.sum(msg='m', out='h'))
-            #     rst = graph.dstdata['h']
-            # else:
-            # aggregate first then mult W
             graph.srcdata['h'] = feat_src ## setting node feature of graph
             graph.update_all(aggregate_fn, fn.sum(msg='m', out='h'))
             rst = graph.dstdata['h']
