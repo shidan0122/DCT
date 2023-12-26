@@ -15,7 +15,6 @@ def labels_affnty(labels_1):
         affnty = np.float32(labels_1 == labels_1[:, np.newaxis])
     else:
         affnty = np.float32(np.sign(np.dot(labels_1, labels_1.T)))
-    # in_affnty, out_affnty = normalize(affnty)
     return torch.Tensor(affnty)
 
 def euclidean_dist(x, y):
@@ -26,26 +25,15 @@ def euclidean_dist(x, y):
     Returns:
     dist: pytorch Variable, with shape [m, n]
     """
-
     m, n = x.size(0), y.size(0)
-
     xx = torch.pow(x, 2).sum(1, keepdim=True).expand(m, n)
-
     yy = torch.pow(y, 2).sum(1, keepdim=True).expand(n, m).t()
     dist = xx + yy
-    # torch.addmm
     dist.addmm_(1, -2, x, y.t())
-    # clamp()   dist = dist.clamp(min=1e-12).sqrt()  # for numerical stability
     return dist
 
 def get_graph(feature, feature1):
-    # feature = F.normalize(feature)
-    # similarity = (feature @ feature.T).softmax(dim=-1)
     similarity = (100.0 * feature @ feature.T).softmax(dim=-1)
-    # similarity = feature.mm(feature.t())
-
-    '''threshold selection'''
-    # similarity[similarity<threshold] = 0
 
     '''topk selection'''
     batch_size = feature.shape[0]
@@ -55,23 +43,13 @@ def get_graph(feature, feature1):
     topk_min = np.argsort(similarity, axis=-1)[:,:topk]
     for col_idx in topk_min.T:
         similarity[np.arange(similarity.shape[0]), col_idx]= 0.0
-    # print(similarity.shape, similarity, similarity[0:2,:])
-    # assert False
 
     '''label guide'''
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # affnty = labels_affnty(labels).to(device)
-
-    # similarity = similarity.mm(affnty)
-    # similarity = similarity+affnty
-
     similarity = torch.from_numpy(similarity).cuda()
     similarity_non = np.nonzero(similarity.cuda()) #nearest neighbors index, [batchsize*number of neighbors,2]
     u = similarity_non[:,0]
     v = similarity_non[:,1]
     g = dgl.graph((u,v))
-    # import pdb
-    # pdb.set_trace()
 
     g.ndata['feat'] = feature1
     g = g.remove_self_loop().add_self_loop()
@@ -202,8 +180,6 @@ def rbf_affnty(X, Y, topk=10):
     affnty = np.zeros(rbf_k.shape)
     for col_idx in topk_max.T:
         affnty[np.arange(rbf_k.shape[0]), col_idx] = 1.0
-        # print (affnty[:,1])
-        # assert False
     similarity_non = np.nonzero(affnty)
     u = similarity_non[:, 0]
     v = similarity_non[:, 1]
@@ -211,5 +187,4 @@ def rbf_affnty(X, Y, topk=10):
     g.ndata['feat'] = X
     g = g.remove_self_loop().add_self_loop()
     g.create_formats_()
-    # in_affnty, out_affnty = normalize(affnty)
-    return g #torch.Tensor(in_affnty), torch.Tensor(out_affnty)
+    return g 
