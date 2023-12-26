@@ -6,8 +6,8 @@ import torch.nn.functional as F
 from torch import optim
 from itertools import chain
 from data import load_dataset
-from module import Feature_Extractor, Encoder_Decoder, Classifier, Feature_Extractor_IMG
-from util import get_graph, to_one_hot, fx_calc_map_label, rbf_affnty, labels_affnty
+from module import Feature_Extractor, Encoder_Decoder, Classifier
+from util import get_graph, to_one_hot, fx_calc_map_label, labels_affnty
 
 class Model(object):
     def __init__(self, args):
@@ -24,7 +24,6 @@ class Model(object):
         self.param_loss_cls_img = args.param_loss_cls_img
         self.param_loss_cls_txt = args.param_loss_cls_txt
         self.param_loss_cross = args.param_loss_cross
-        self.param_loss_sim = args.param_loss_sim
         self.param_loss_sim_img = args.param_loss_sim_img
         self.param_loss_sim_txt = args.param_loss_sim_txt
         self.param_loss_sim_it = args.param_loss_sim_it
@@ -115,7 +114,7 @@ class Model(object):
         loss = ((view1_predict - label_onehot.float()) ** 2).sum(1).sqrt().mean()
         return loss
 
-    def sce_loss(self, x, y, alpha=3):  # 1,2,3,4
+    def sce_loss(self, x, y, alpha=3):  
         x = F.normalize(x, p=2, dim=-1)
         y = F.normalize(y, p=2, dim=-1)
         loss = (1 - (x * y).sum(dim=-1)).pow_(alpha)
@@ -147,9 +146,8 @@ class Model(object):
         self.optimizer_classifier_text = optim.Adam(self.classifier['txt'].parameters(), lr=1e-3)
 
         self.reconstruction_criterion = nn.L1Loss(size_average=False)
-        # self.GANcriterion = nn.BCELoss()
 
-        batches = int(math.floor(self.train_size / float(self.batch_size)))  # floor
+        batches = int(math.floor(self.train_size / float(self.batch_size))) 
         for epoch in range(self.epochs):
             loss_arr = 0.0
             np.random.shuffle(self.dual_index)
@@ -182,23 +180,6 @@ class Model(object):
                                          torch.tensor(self.data['train_label'][batch_only_image_index]),
                                          torch.tensor(self.data['train_label'][batch_only_txet_index])], dim=0).cuda()
 
-                '''feature extractor'''
-                '''batch_dual_image_features = self.feature_extractor['img'](batch_dual_images)
-                batch_only_image_features = self.feature_extractor['img'](batch_only_images)
-                batch_dual_texts_features = self.feature_extractor['txt'](batch_dual_texts)
-                batch_only_texts_features = self.feature_extractor['txt'](batch_only_texts)
-
-                #######xiugai
-                batch_image_features = torch.cat([batch_dual_image_features, batch_only_image_features, batch_only_texts_features], dim=0)
-                batch_text_features = torch.cat([batch_dual_texts_features, batch_only_image_features, batch_only_texts_features], dim=0)
-                batch_images = torch.cat([batch_dual_image_features, batch_only_image_features, batch_only_text_masks], dim=0)
-                batch_texts = torch.cat([batch_dual_texts_features, batch_only_image_masks, batch_only_text_masks], dim=0)
-
-                #construct graph data
-                image_graph = get_graph(batch_image_features, batch_images)
-                text_graph = get_graph(batch_text_features, batch_texts)
-                label_graph = labels_affnty(batch_label)'''
-
                 batch_image = torch.cat([batch_dual_images, batch_only_images, batch_only_texts], dim=0).cuda()
                 batch_text = torch.cat([batch_dual_texts, batch_only_images, batch_only_texts], dim=0).cuda()
                 batch_image_features = self.feature_extractor['img'](batch_image)
@@ -217,8 +198,8 @@ class Model(object):
                 decoder_text_features = self.decoder['txt'](text_graph, mid_text_features)
 
                 '''classifier'''
-                predict_image_labels = self.classifier['img'](encoder_image_features)  # mid_image_features, encoder_image_features
-                predict_text_labels = self.classifier['txt'](encoder_text_features)  # mid_text_features, encoder_text_features
+                predict_image_labels = self.classifier['img'](encoder_image_features) 
+                predict_text_labels = self.classifier['txt'](encoder_text_features)  
 
                 self.optimizer_feature_extractor_image.zero_grad()
                 self.optimizer_feature_extractor_text.zero_grad()
@@ -246,7 +227,6 @@ class Model(object):
                 label_graph = label_graph.cuda()
 
                 temp_img = F.normalize(batch_image_features)
-                # temp_img_similarity = temp_img.mm(temp_img.t())
                 temp_img_similarity = temp_img @ temp_img.T
                 loss_mse_similarity_img = F.mse_loss(temp_img_similarity, label_graph)
 
@@ -261,12 +241,10 @@ class Model(object):
                 temp_vt_similarity = temp_img_z @ temp_txt_z.T
                 loss_cross_similarity_1 = F.mse_loss(temp_vt_similarity, label_graph)
 
-                loss_mse_similarity = self.param_loss_sim_img * loss_mse_similarity_img + self.param_loss_sim_txt * loss_mse_similarity_txt + self.param_loss_sim * loss_cross_similarity + self.param_loss_sim_it * loss_cross_similarity_1
-                # loss_mse_similarity = self.param_loss_sim_img * loss_mse_similarity_img + self.param_loss_sim_txt * loss_mse_similarity_txt + self.param_loss_sim_it * loss_cross_similarity_1
+                loss_mse_similarity = self.param_loss_sim_img * loss_mse_similarity_img + self.param_loss_sim_txt * loss_mse_similarity_txt + self.param_loss_sim_it * loss_cross_similarity_1
 
                 ''' OVERALL LOSS'''
                 loss = self.param_loss_cls_img * loss_classifier_image + self.param_loss_cls_txt * loss_classifier_text + self.param_loss_recon * loss_reconstruction + self.param_loss_cross * loss_cross + loss_mse_similarity
-                #loss += loss_mse_similarity
 
                 loss.backward()
                 self.optimizer_feature_extractor_image.step()
@@ -280,8 +258,6 @@ class Model(object):
 
                 loss_arr += loss
             print(('[loss %4f]  [icls %4f]  [tcls %4f]  [rec %4f]  [cross %4f] [new %4f]') % (loss, loss_classifier_image, loss_classifier_text, loss_reconstruction, loss_cross, loss_cross_similarity_1))
-            # print(('da %4f')%loss_mse_similarity)
-            # self.test()
 
     def test(self):
         test_images = torch.tensor(self.data['test_img'], dtype=torch.float32).cuda()
@@ -297,19 +273,13 @@ class Model(object):
             image_features = self.feature_extractor['img'](test_images)
             text_features = self.feature_extractor['txt'](test_texts)
 
-            # testg = np.ones(image_features.shape)
             image_graph = get_graph(image_features, image_features)
             text_graph = get_graph(text_features, text_features)
             encoder_image_features, _ = self.encoder['img'](image_graph, image_graph.ndata['feat'], return_hidden=True)
             encoder_text_features, _ = self.encoder['txt'](text_graph, text_graph.ndata['feat'], return_hidden=True)
-            # encoder_image_features = image_graph.ndata['feat']
-            # encoder_text_features = text_graph.ndata['feat']
 
             test_image_features = encoder_image_features.cpu().numpy()
             test_text_features = encoder_text_features.cpu().numpy()
-
-            # test_text_features = text_features.cpu().numpy()
-            # test_image_features = image_features.cpu().numpy()
             test_labels = test_labels.cpu().numpy()
 
         i_map = fx_calc_map_label(test_image_features, test_text_features, test_labels)
